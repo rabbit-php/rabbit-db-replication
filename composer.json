@@ -12,7 +12,8 @@
   "require": {
     "rabbit/framework": "dev-master",
     "rabbit/redis": "dev-master",
-    "rabbit/data-pipeline": "dev-master"
+    "rabbit/data-pipeline": "dev-master",
+    "krowinski/php-mysql-replication": "^6.0"
   },
   "autoload": {
     "psr-4": {
