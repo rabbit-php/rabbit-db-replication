@@ -1,0 +1,22 @@
+{
+  "name": "rabbit/db-relication",
+  "description": "rabbit db-relication.",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "albert",
+      "email": "63851587@qq.com"
+    }
+  ],
+  "require": {
+    "rabbit/framework": "dev-master",
+    "rabbit/redis": "dev-master",
+    "rabbit/data-pipeline": "dev-master"
+  },
+  "autoload": {
+    "psr-4": {
+      "Rabbit\\DB\\Relication\\": "src/"
+    }
+  }
+}
