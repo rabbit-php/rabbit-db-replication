@@ -60,8 +60,8 @@ class Clickhouse extends AbstractSingletonPlugin
             null,
             [
                 'config' => [],
-                'tick' => 1,
-                'bufferSize' => 1000,
+                'tick' => 0,
+                'bufferSize' => 1,
             ]
         );
         if ($dsn === null || $class === null) {
@@ -70,7 +70,7 @@ class Clickhouse extends AbstractSingletonPlugin
         $dbName = md5($dsn);
         MakeCKConnection::addConnection($class, $dbName, $dsn, $config);
         $this->db = getDI('clickhouse')->getConnection($dbName);
-        Timer::tick($tick * 1000, function () {
+        $tick > 0 && Timer::tick($tick * 1000, function () {
             $this->trans();
         });
     }
