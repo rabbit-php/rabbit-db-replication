@@ -210,6 +210,7 @@ class Mysql extends AbstractSingletonPlugin
                 }
             };
             $this->binLogStream->registerSubscriber($event);
+            App::info("start recv binlog...", $this->logKey);
             $this->binLogStream->run();
         } catch (\Throwable $exception) {
             App::error(ExceptionHelper::dumpExceptionToString($exception), $this->logKey);
