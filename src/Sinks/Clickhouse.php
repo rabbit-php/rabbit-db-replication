@@ -11,7 +11,7 @@ use MySQLReplication\Definitions\ConstEventsNames;
 use Psr\SimpleCache\InvalidArgumentException;
 use rabbit\App;
 use Rabbit\Data\Pipeline\AbstractSingletonPlugin;
-use rabbit\db\clickhouse\BatchInsertJsonRows;
+use rabbit\db\clickhouse\BatchInsert;
 use rabbit\db\clickhouse\Connection;
 use rabbit\db\clickhouse\MakeCKConnection;
 use rabbit\exception\InvalidConfigException;
@@ -36,6 +36,8 @@ class Clickhouse extends AbstractSingletonPlugin
     private $total = 0;
     /** @var string */
     private $posKey = 'binlog.pos';
+    /** @var string */
+    private $driver;
 
     /**
      * @return mixed|void
@@ -68,21 +70,19 @@ class Clickhouse extends AbstractSingletonPlugin
             throw new InvalidConfigException("class, dsn must be set in $this->key");
         }
         $dbName = md5($dsn);
-        MakeCKConnection::addConnection($class, $dbName, $dsn, $config);
-        $this->db = getDI('clickhouse')->getConnection($dbName);
+        $this->driver = MakeCKConnection::addConnection($class, $dbName, $dsn, $config);
+        $this->db = getDI($this->driver)->getConnection($dbName);
         $tick > 0 && Timer::tick($tick * 1000, function () {
             $this->trans();
         });
     }
 
     /**
-     * @param $input
-     * @throws Exception
      * @throws InvalidArgumentException
      */
-    public function run(&$input): void
+    public function run(): void
     {
-        [$table, $type, $items, $file, $pos] = $input;
+        [$table, $type, $items, $file, $pos] = $this->getInput();
         $this->cache->set($this->posKey, [$file, $pos]);
         $flag = $this->tables[$table]['flag'];
         if ($type === ConstEventsNames::DELETE) {
@@ -138,12 +138,17 @@ class Clickhouse extends AbstractSingletonPlugin
      * @param array $items
      * @return string
      */
-    protected function save(string $table, string $key, array $items): string
+    protected function save(string $table, string $key, array &$items): string
     {
         $ids = [];
-        $batch = new BatchInsertJsonRows($table, $this->db);
+        if ($this->driver === 'click') {
+            $batch = new \rabbit\db\click\BatchInsert($table, $this->db);
+        } else {
+            $batch = new BatchInsert($table, $this->db);
+        }
+        $batch->addColumns($this->db->getTableSchema($table)->getColumnNames());
         foreach ($items as $item) {
-            $batch->addRow($item);
+            $batch->addRow(array_values($item));
             $ids[] = $item[$key];
         }
         $batch->execute();

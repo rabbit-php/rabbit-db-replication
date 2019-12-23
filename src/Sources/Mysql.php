@@ -167,11 +167,9 @@ class Mysql extends AbstractSingletonPlugin
     }
 
     /**
-     * @param $input
      * @throws InvalidArgumentException
-     * @throws \Exception
      */
-    public function run(&$input)
+    public function run()
     {
         try {
             $this->makeStream();
