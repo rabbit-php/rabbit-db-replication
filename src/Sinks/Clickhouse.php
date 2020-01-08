@@ -83,7 +83,9 @@ class Clickhouse extends AbstractSingletonPlugin
     public function run(): void
     {
         [$table, $type, $items, $file, $pos] = $this->getInput();
-        $this->cache->set($this->posKey, [$file, $pos]);
+        if ($file !== null && $pos !== null) {
+            $this->cache->set($this->posKey, [$file, $pos]);
+        }
         $flag = $this->tables[$table]['flag'];
         if ($type === ConstEventsNames::DELETE) {
             foreach ($items as $item) {
@@ -127,7 +129,7 @@ class Clickhouse extends AbstractSingletonPlugin
                 }
             }
             [$file, $pos] = $this->cache->get($this->posKey);
-            App::info("save binlog file $file and pos $pos", $this->logKey);
+            App::info("save binlog file $file and pos $pos", $this->key);
             $this->redis->set($this->posKey, \msgpack_pack([$file, $pos]));
         }
     }
@@ -148,10 +150,12 @@ class Clickhouse extends AbstractSingletonPlugin
         }
         $batch->addColumns($this->db->getTableSchema($table)->getColumnNames());
         foreach ($items as $item) {
-            $batch->addRow(array_values($item));
+            $batch->addRow([array_values($item)]);
             $ids[] = $item[$key];
         }
-        $batch->execute();
+        if ($batch->execute() === 0) {
+            throw new Exception("save to $table failed");
+        }
         return implode(',', $ids);
     }
 }
