@@ -73,7 +73,7 @@ class Kafka extends AbstractSingletonPlugin
                     case RD_KAFKA_RESP_ERR_NO_ERROR:
                         $output = json_decode($message->payload, true);
                         [$table, $type, $_, $file, $pos] = $output;
-                        $this->output($output, array_search($table, $this->tables));
+                        $this->output($output);
                         $consumer->commitAsync();
                         $msg = "success consumer $table $file $pos";
                         $method = 'info';
