@@ -93,8 +93,8 @@ class Redis extends AbstractSingletonPlugin
                     $output = [$table, $type, $item, $file, $pos];
                     $this->output($output);
                 }
+                $model::deleteAll([$config['key'] => ArrayHelper::getColumn($result, $config['key'])]);
             }
-            $model::deleteAll([$config['key'] => ArrayHelper::getColumn($result, $config['key'])]);
         });
     }
 
