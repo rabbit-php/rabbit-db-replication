@@ -154,7 +154,7 @@ class Mysql extends AbstractSingletonPlugin
         if ($current) {
             [$file, $pos] = \msgpack_unpack($current);
             if ($file && $pos) {
-                $builder->withBinLogPosition($pos)->withBinLogFileName($file);
+                $builder->withBinLogPosition((int)$pos)->withBinLogFileName($file);
             }
         }
         $this->binLogStream = new MySQLReplicationFactory(
