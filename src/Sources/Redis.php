@@ -90,7 +90,7 @@ class Redis extends AbstractSingletonPlugin
                         $pos
                     ] = ArrayHelper::getValueByArray($item, ['type', 'file', 'pos']);
                     unset($item['type'], $item['file'], $item['pos']);
-                    $output = [$table, $type, $item, $file, $pos];
+                    $output = [$table, $type, [$item], $file, $pos];
                     $this->output($output);
                 }
                 $model::deleteAll([$config['key'] => ArrayHelper::getColumn($result, $config['key'])]);
