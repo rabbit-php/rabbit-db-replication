@@ -128,9 +128,7 @@ class Clickhouse extends AbstractSingletonPlugin
                     $this->db->createCommand($sql)->execute();
                 }
             }
-            [$file, $pos] = $this->cache->get($this->posKey);
             App::info("save binlog file $file and pos $pos", $this->key);
-            $this->redis->set($this->posKey, \msgpack_pack([$file, $pos]));
         }
     }
 
