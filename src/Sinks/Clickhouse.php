@@ -128,7 +128,7 @@ class Clickhouse extends AbstractSingletonPlugin
                     $this->db->createCommand($sql)->execute();
                 }
             }
-            App::info("save binlog file $file and pos $pos", $this->key);
+            App::info("save binlog file success", $this->key);
         }
     }
 
