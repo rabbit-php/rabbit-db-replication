@@ -148,7 +148,7 @@ class Clickhouse extends AbstractSingletonPlugin
         }
         $batch->addColumns($this->db->getTableSchema($table)->getColumnNames());
         foreach ($items as $item) {
-            $batch->addRow([array_values($item)]);
+            $batch->addRow(array_values($item));
             $ids[] = $item[$key];
         }
         if ($batch->execute() === 0) {
