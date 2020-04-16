@@ -24,6 +24,8 @@ use Rabbit\Data\Pipeline\AbstractSingletonPlugin;
 use rabbit\exception\InvalidConfigException;
 use rabbit\helper\ArrayHelper;
 use rabbit\helper\ExceptionHelper;
+use rabbit\httpserver\CoServer;
+use rabbit\server\Server;
 
 /**
  * Class Mysql
@@ -98,8 +100,7 @@ class Mysql extends AbstractSingletonPlugin
      */
     protected function makeStream(): void
     {
-        $socket = new class implements SocketInterface
-        {
+        $socket = new class implements SocketInterface {
             /** @var Socket */
             protected $conn;
 
@@ -171,10 +172,17 @@ class Mysql extends AbstractSingletonPlugin
      */
     public function run()
     {
+        $server = App::getServer();
+        if ($server === null && getDI('socketHandle')->workerId > 0) {
+            return;
+        } elseif ($server instanceof CoServer && $server->getProcessSocket()->workerId > 0) {
+            return;
+        } elseif ($server instanceof Server && $server->getSwooleServer()->worker_id > 0) {
+            return;
+        }
         try {
             $this->makeStream();
-            $event = new class($this) extends EventSubscribers
-            {
+            $event = new class($this) extends EventSubscribers {
                 /** @var Mysql */
                 protected $plugin;
 
