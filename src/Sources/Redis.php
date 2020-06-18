@@ -45,7 +45,7 @@ class Redis extends AbstractSingletonPlugin
         }
         $dbName = md5($dsn);
         MakeConnection::addConnection($class, $dbName, $dsn);
-        $this->db = getDI('redis.manager')->getConnection($dbName);
+        $this->db = getDI('redis.manager')->get($dbName);
     }
 
     public function run()

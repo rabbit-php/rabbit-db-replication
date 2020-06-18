@@ -94,7 +94,7 @@ class Redis extends AbstractSingletonPlugin
                  */
                 public static function getDb()
                 {
-                    return getDI('redis.manager')->getConnection(Context::get(md5(get_called_class() . 'dbName')));
+                    return getDI('redis.manager')->get(Context::get(md5(get_called_class() . 'dbName')));
                 }
             };
             $exist = $model::findOne($this->tables[$table]['key']);

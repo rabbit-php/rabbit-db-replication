@@ -71,7 +71,7 @@ class Clickhouse extends AbstractSingletonPlugin
         }
         $dbName = md5($dsn);
         $this->driver = MakeCKConnection::addConnection($class, $dbName, $dsn, $config);
-        $this->db = getDI($this->driver)->getConnection($dbName);
+        $this->db = getDI($this->driver)->get($dbName);
         $tick > 0 && Timer::tick($tick * 1000, function () {
             $this->trans();
         });
