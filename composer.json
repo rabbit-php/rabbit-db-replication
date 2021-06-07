@@ -10,10 +10,9 @@
     }
   ],
   "require": {
-    "rabbit/framework": "^1.0",
-    "rabbit/db-redis": "^1.0",
-    "rabbit/data-pipeline": "^1.0",
-    "krowinski/php-mysql-replication": "^6.0"
+    "rabbit/base": "dev-master",
+    "rabbit/data-pipeline": "dev-master",
+    "krowinski/php-mysql-replication": "^7.0"
   },
   "autoload": {
     "psr-4": {
