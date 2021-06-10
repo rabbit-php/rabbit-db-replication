@@ -146,8 +146,12 @@ class Mysql extends AbstractPlugin
                 ->withTablesOnly($this->tables);
             $gtid = $this->index->getIndex($this->posKey);
             if ($gtid) {
-                $gtid = implode(',', array_unique(explode(PHP_EOL, rtrim($gtid))));
-                $builder->withGtid($gtid);
+                $ids = [];
+                [$gtid, $index] = explode(':', trim($gtid));
+                for ($i = 1; $i <= (int)$index; $i++) {
+                    $ids[] = "{$gtid}:{$i}";
+                }
+                $builder->withGtid(implode(',', $ids));
             }
             $this->binLogStream = new MySQLReplicationFactory(
                 $builder->build(),
@@ -160,18 +164,11 @@ class Mysql extends AbstractPlugin
             {
                 protected Mysql $plugin;
                 protected Message $msg;
-                private string $key = 'binlog.gtid';
 
                 public function __construct(Mysql $plugin, Message $msg)
                 {
                     $this->plugin = $plugin;
                     $this->msg = $msg;
-                }
-
-                public function onGTID(GTIDLogDTO $event): void
-                {
-                    Context::set($this->key, $event->getGtid());
-                    $this->plugin->save($event->getGtid());
                 }
 
                 public function onUpdate(UpdateRowsDTO $event): void
@@ -193,12 +190,11 @@ class Mysql extends AbstractPlugin
                 {
                     $table = $event->getTableMap()->getTable();
                     $msg = clone $this->msg;
-                    $gtid = Context::get($this->key);
-                    $msg->opt['gtid'] = $gtid;
-                    $msg->data = [$table, $event->getType(), $event->getValues()];
-                    rgo(function () use ($msg, $gtid) {
+                    $msg->opt['gtid'] = $event->getEventInfo()->getBinLogCurrent()->getGtid();
+                    $msg->data = [$table, $event->getType(), $event->getValues(), $event->getEventInfo()->getDateTime()];
+                    rgo(function () use ($msg) {
                         $this->plugin->sink($msg);
-                        $this->plugin->save($gtid);
+                        $this->plugin->save($msg->opt['gtid']);
                     });
                 }
             };

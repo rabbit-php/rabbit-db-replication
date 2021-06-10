@@ -22,7 +22,7 @@ class File implements IndexInterface
     public function getIndex(string $key): ?string
     {
         $fileName = $this->path . "/$key";
-        if (false === $index = file_get_contents($fileName)) {
+        if (false === $index = @file_get_contents($fileName)) {
             return null;
         }
         return $index;
@@ -31,9 +31,11 @@ class File implements IndexInterface
     public function saveIndex(string $key, string $value): void
     {
         $this->openFile($key);
-        flock($this->fp, LOCK_EX);
-        fwrite($this->fp, $value . PHP_EOL);
-        flock($this->fp, LOCK_UN);
+        nlock(function () use ($value) {
+            flock($this->fp, LOCK_EX);
+            fwrite($this->fp, $value);
+            flock($this->fp, LOCK_UN);
+        });
     }
 
     private function openFile(string $key)
@@ -41,7 +43,7 @@ class File implements IndexInterface
         if (!$this->fp) {
             $fileName = $this->path . "/$key";
             if (false === $this->fp = share("open.$fileName", function () use ($fileName) {
-                return @fopen($fileName, 'a+');
+                return @fopen($fileName, 'w');
             })->result) {
                 throw new InvalidArgumentException("Unable to open file: {$key}");
             }
