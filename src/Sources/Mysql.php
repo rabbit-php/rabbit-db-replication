@@ -1,69 +1,57 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Rabbit\DB\Relication\Sources;
 
-use Co\Socket;
-use Co\System;
-use Doctrine\DBAL\DBALException;
-use MySQLReplication\BinLog\BinLogException;
 use MySQLReplication\Config\ConfigBuilder;
-use MySQLReplication\Config\ConfigException;
 use MySQLReplication\Event\DTO\DeleteRowsDTO;
+use MySQLReplication\Event\DTO\GTIDLogDTO;
+use MySQLReplication\Event\DTO\RowsDTO;
 use MySQLReplication\Event\DTO\UpdateRowsDTO;
 use MySQLReplication\Event\DTO\WriteRowsDTO;
 use MySQLReplication\Event\EventSubscribers;
-use MySQLReplication\Gtid\GtidException;
 use MySQLReplication\MySQLReplicationFactory;
-use MySQLReplication\Socket\SocketException as SocketExceptionAlias;
 use MySQLReplication\Socket\SocketInterface;
-use Psr\SimpleCache\InvalidArgumentException;
-use rabbit\App;
-use rabbit\core\Exception;
-use Rabbit\Data\Pipeline\AbstractSingletonPlugin;
-use rabbit\exception\InvalidConfigException;
-use rabbit\helper\ArrayHelper;
-use rabbit\helper\ExceptionHelper;
-use rabbit\httpserver\CoServer;
-use rabbit\server\Server;
+use Rabbit\Base\App;
+use Rabbit\Base\Core\Context;
+use Rabbit\Base\Helper\ArrayHelper;
+use Rabbit\Base\Helper\ExceptionHelper;
+use Rabbit\Data\Pipeline\AbstractPlugin;
+use Rabbit\Data\Pipeline\Message;
+use Rabbit\DB\Relication\Manager\File;
+use Rabbit\DB\Relication\Manager\IndexInterface;
+use RuntimeException;
+use Swoole\Coroutine\Socket;
+use Throwable;
 
 /**
  * Class Mysql
  * @package Relication\Sources
  */
-class Mysql extends AbstractSingletonPlugin
+class Mysql extends AbstractPlugin
 {
-    /** @var MySQLReplicationFactory */
-    protected $binLogStream;
-    /** @var array */
-    public $tables = [];
-    /** @var string */
-    protected $host;
-    /** @var int */
-    protected $port;
-    /** @var string */
-    protected $user;
-    /** @var string */
-    protected $pwd;
-    /** @var int */
-    protected $slaveId;
-    /** @var int */
-    protected $heartBeat;
-    /** @var string */
-    private $posKey = 'binlog.pos';
+    protected MySQLReplicationFactory $binLogStream;
+    public array $tables = [];
+    protected string $host = '127.0.0.1';
+    protected int $port = 3306;
+    protected string $user;
+    protected string $pass;
+    protected int $slaveId = 666;
+    protected float $heartBeat = 0.0;
+    protected array $database = [];
+    private string $posKey = 'binlog.pos';
 
-    /**
-     * @return mixed|void
-     * @throws InvalidConfigException
-     */
-    public function init()
+    public IndexInterface $index;
+
+    public function init(): void
     {
         parent::init();
         [
             $this->host,
             $this->port,
             $this->user,
-            $this->pwd,
+            $this->pass,
             $this->slaveId,
             $this->heartBeat,
             $this->tables,
@@ -74,151 +62,150 @@ class Mysql extends AbstractSingletonPlugin
                 'host',
                 'port',
                 'user',
-                'password',
+                'pass',
                 'slaveId',
                 'heartBeat',
                 'tables',
-                'posKey'
+                'posKey',
+                'database'
             ],
-            null,
             [
-                'heartBeat' => 2,
-                'posKey' => 'binlog.pos'
+                $this->host,
+                $this->port,
+                '',
+                '',
+                $this->slaveId,
+                $this->heartBeat,
+                $this->tables,
+                $this->posKey,
+                $this->database
             ]
         );
-        if (!$this->host || !$this->port || !$this->user || !$this->pwd || !$this->slaveId || !$this->tables) {
-            throw new InvalidConfigException("host & port & user & password & slaveId & tables must be set!");
-        }
+        $this->index = new File();
     }
 
-    /**
-     * @throws BinLogException
-     * @throws ConfigException
-     * @throws DBALException
-     * @throws GtidException
-     * @throws SocketExceptionAlias
-     */
-    protected function makeStream(): void
+    public function save(string $value): void
     {
-        $socket = new class implements SocketInterface {
-            /** @var Socket */
-            protected $conn;
-
-            public function isConnected(): bool
-            {
-                return $this->conn->errCode === 0;
-            }
-
-            public function connectToStream(string $host, int $port): void
-            {
-                $client = new Socket(AF_INET, SOCK_STREAM);
-                $reconnectCount = 0;
-                while (true) {
-                    if (!$client->connect($host, $port, 3)) {
-                        $reconnectCount++;
-                        if ($reconnectCount >= 3) {
-                            $error = sprintf(
-                                'Service connect fail error=%s host=%s port=%s',
-                                socket_strerror($client->errCode),
-                                $host,
-                                $port
-                            );
-                            throw new Exception($error);
-                        }
-                        System::sleep(1);
-                    } else {
-                        break;
-                    }
-                }
-                $this->conn = $client;
-            }
-
-            public function readFromSocket(int $length): string
-            {
-                return $this->conn->recvAll($length);
-            }
-
-            public function writeToSocket(string $data): void
-            {
-                $this->conn->sendAll($data);
-            }
-        };
-        $builder = (new ConfigBuilder())
-            ->withUser($this->user)
-            ->withHost($this->host)
-            ->withPassword($this->pwd)
-            ->withPort($this->port)
-            ->withSlaveId($this->slaveId)
-            ->withHeartbeatPeriod($this->heartBeat)
-            ->withTablesOnly($this->tables);
-        $current = $this->redis->get($this->posKey);
-        if ($current) {
-            [$file, $pos] = \msgpack_unpack($current);
-            if ($file && $pos) {
-                $builder->withBinLogPosition((int)$pos)->withBinLogFileName($file);
-            }
-        }
-        $this->binLogStream = new MySQLReplicationFactory(
-            $builder->build(),
-            null,
-            null,
-            null,
-            $socket
-        );
+        $this->index->saveIndex($this->posKey, $value);
     }
 
-    /**
-     * @throws InvalidArgumentException
-     */
-    public function run()
+    public function run(Message $msg): void
     {
-        $server = App::getServer();
-        if ($server === null && getDI('socketHandle')->workerId > 0) {
-            return;
-        } elseif ($server instanceof CoServer && $server->getProcessSocket()->workerId > 0) {
-            return;
-        } elseif ($server instanceof Server && $server->getSwooleServer()->worker_id > 0) {
-            return;
-        }
         try {
-            $this->makeStream();
-            $event = new class($this) extends EventSubscribers {
-                /** @var Mysql */
-                protected $plugin;
+            $socket = new class implements SocketInterface
+            {
+                protected Socket $conn;
 
-                public function __construct(Mysql $plugin)
+                public function isConnected(): bool
+                {
+                    return $this->conn->errCode === 0;
+                }
+
+                public function connectToStream(string $host, int $port): void
+                {
+                    $client = new Socket(AF_INET, SOCK_STREAM);
+                    $reconnectCount = 0;
+                    while (true) {
+                        if (!$client->connect($host, $port, 3)) {
+                            $reconnectCount++;
+                            if ($reconnectCount >= 3) {
+                                $error = sprintf(
+                                    'Service connect fail error=%s host=%s port=%s',
+                                    socket_strerror($client->errCode),
+                                    $host,
+                                    $port
+                                );
+                                throw new RuntimeException($error);
+                            }
+                            sleep(1);
+                        } else {
+                            break;
+                        }
+                    }
+                    $this->conn = $client;
+                }
+
+                public function readFromSocket(int $length): string
+                {
+                    return $this->conn->recvAll($length, -1);
+                }
+
+                public function writeToSocket(string $data): void
+                {
+                    $this->conn->sendAll($data);
+                }
+            };
+            $builder = (new ConfigBuilder())
+                ->withUser($this->user)
+                ->withHost($this->host)
+                ->withPassword($this->pass)
+                ->withPort($this->port)
+                ->withSlaveId($this->slaveId)
+                ->withHeartbeatPeriod($this->heartBeat)
+                ->withDatabasesOnly($this->database)
+                ->withTablesOnly($this->tables);
+            $gtid = $this->index->getIndex($this->posKey);
+            if ($gtid) {
+                $gtid = implode(',', array_unique(explode(PHP_EOL, rtrim($gtid))));
+                $builder->withGtid($gtid);
+            }
+            $this->binLogStream = new MySQLReplicationFactory(
+                $builder->build(),
+                null,
+                null,
+                null,
+                $socket
+            );
+            $event = new class($this, $msg) extends EventSubscribers
+            {
+                protected Mysql $plugin;
+                protected Message $msg;
+                private string $key = 'binlog.gtid';
+
+                public function __construct(Mysql $plugin, Message $msg)
                 {
                     $this->plugin = $plugin;
+                    $this->msg = $msg;
+                }
+
+                public function onGTID(GTIDLogDTO $event): void
+                {
+                    Context::set($this->key, $event->getGtid());
+                    $this->plugin->save($event->getGtid());
                 }
 
                 public function onUpdate(UpdateRowsDTO $event): void
                 {
-                    $current = $event->getEventInfo()->getBinLogCurrent();
-                    $table = $event->getTableMap()->getTable();
-                    $output = [$table, $event->getType(), ArrayHelper::getColumn($event->getValues(), 'after'), $current->getBinFileName(), $current->getBinLogPosition()];
-                    $this->plugin->output($output, (int)array_search($table, $this->plugin->tables));
+                    $this->rowDTO($event);
                 }
 
                 public function onDelete(DeleteRowsDTO $event): void
                 {
-                    $current = $event->getEventInfo()->getBinLogCurrent();
-                    $table = $event->getTableMap()->getTable();
-                    $output = [$table, $event->getType(), $event->getValues(), $current->getBinFileName(), $current->getBinLogPosition()];
-                    $this->plugin->output($output, (int)array_search($table, $this->plugin->tables));
+                    $this->rowDTO($event);
                 }
 
                 public function onWrite(WriteRowsDTO $event): void
                 {
-                    $current = $event->getEventInfo()->getBinLogCurrent();
+                    $this->rowDTO($event);
+                }
+
+                public function rowDTO(RowsDTO $event): void
+                {
                     $table = $event->getTableMap()->getTable();
-                    $output = [$table, $event->getType(), $event->getValues(), $current->getBinFileName(), $current->getBinLogPosition()];
-                    $this->plugin->output($output, (int)array_search($table, $this->plugin->tables));
+                    $msg = clone $this->msg;
+                    $gtid = Context::get($this->key);
+                    $msg->opt['gtid'] = $gtid;
+                    $msg->data = [$table, $event->getType(), $event->getValues()];
+                    rgo(function () use ($msg, $gtid) {
+                        $this->plugin->sink($msg);
+                        $this->plugin->save($gtid);
+                    });
                 }
             };
             $this->binLogStream->registerSubscriber($event);
-            App::info("start recv binlog...", $this->key);
+            App::debug("start recv binlog with gtid:{$gtid}", $this->key);
             $this->binLogStream->run();
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             App::error(ExceptionHelper::dumpExceptionToString($exception), $this->key);
         }
     }

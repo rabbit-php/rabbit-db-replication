@@ -1,76 +1,44 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Rabbit\DB\Relication\Sinks;
 
+use longlang\phpkafka\Producer\Producer;
+use longlang\phpkafka\Producer\ProducerConfig;
+use Rabbit\Base\Core\Exception;
+use Rabbit\Base\Helper\ArrayHelper;
+use Rabbit\Data\Pipeline\AbstractPlugin;
+use Rabbit\Data\Pipeline\Message;
 
-use MySQLReplication\Definitions\ConstEventsNames;
-use rabbit\core\Exception;
-use Rabbit\Data\Pipeline\AbstractSingletonPlugin;
-use rabbit\helper\ArrayHelper;
-use RdKafka\Conf;
-use RdKafka\Producer;
-use RdKafka\ProducerTopic;
-use RdKafka\Topic;
-use RdKafka\TopicConf;
-
-/**
- * Class Kafka
- * @package Rabbit\DB\Relication\Sinks
- */
-class Kafka extends AbstractSingletonPlugin
+class Kafka extends AbstractPlugin
 {
-    /** @var Producer */
-    protected $producer;
-    /** @var ProducerTopic[] */
-    protected $topics = [];
-    /** @var array */
-    protected $topicSet = [];
-    /** @var string */
-    protected $posKey = 'binlog.pos';
-    /** @var array */
-    protected $tables = [];
+    protected ?Producer $producer = null;
+    protected ProducerConfig $conf;
+    protected array $topics = [];
+    protected string $posKey = 'binlog.pos';
+    protected array $tables = [];
 
-    /**
-     * @return mixed|void
-     */
-    public function init()
+    public function init(): void
     {
+        $config = [];
         parent::init();
         [
-            $dsn,
-            $set,
-            $this->topicSet
-        ] = ArrayHelper::getValueByArray($this->config, ['dsn', 'set', 'topicSet'], null, ['set' => [], 'topicSet' => []]);
+            $config['bootstrapServer'],
+            $config['updateBrokers'],
+            $config['acks']
+        ] = ArrayHelper::getValueByArray($this->config, ['dsn', 'updateBrokers', 'acks'], ['updateBrokers' => true, 'acks' => 1]);
         if (empty($dsn)) {
             throw new Exception('dsn must be set!');
         }
-        $conf = new Conf();
-        $conf->set('bootstrap.servers', is_array($dsn) ? implode(',', $dsn) : $dsn);
-        foreach ($set as $key => $value) {
-            $conf->set((string)$key, (string)$value);
-        }
-        $this->producer = new Producer($conf);
+        $this->conf = new ProducerConfig($config);
     }
 
-    /**
-     * @throws \Psr\SimpleCache\InvalidArgumentException
-     */
-    public function run()
+    public function run(Message $msg): void
     {
-        [$table, $type, $items, $file, $pos] = $this->getInput();
-        if (!isset($this->topics[$table])) {
-            $topicConf = new TopicConf();
-            foreach ($this->topicSet as $key => $value) {
-                $topicConf->set((string)$key, (string)$value);
-            }
-            $topic = $this->producer->newTopic($table, $topicConf);
-            $this->topics[$table] = $topic;
-        } else {
-            $topic = $this->topics[$table];
+        if (!$this->producer) {
+            $this->producer = new Producer($this->conf);
         }
-        $topic->produce(RD_KAFKA_PARTITION_UA, 0, json_encode([$table, $type, $items, null, null]));
-        $this->cache->set($this->posKey, [$file, $pos]);
+        $this->producer->send("binlog", json_encode($msg->data));
     }
-
 }
