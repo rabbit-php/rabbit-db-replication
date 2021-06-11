@@ -6,7 +6,6 @@ namespace Rabbit\DB\Relication\Sources;
 
 use MySQLReplication\Config\ConfigBuilder;
 use MySQLReplication\Event\DTO\DeleteRowsDTO;
-use MySQLReplication\Event\DTO\GTIDLogDTO;
 use MySQLReplication\Event\DTO\RowsDTO;
 use MySQLReplication\Event\DTO\UpdateRowsDTO;
 use MySQLReplication\Event\DTO\WriteRowsDTO;
@@ -14,13 +13,12 @@ use MySQLReplication\Event\EventSubscribers;
 use MySQLReplication\MySQLReplicationFactory;
 use MySQLReplication\Socket\SocketInterface;
 use Rabbit\Base\App;
-use Rabbit\Base\Core\Context;
 use Rabbit\Base\Helper\ArrayHelper;
 use Rabbit\Base\Helper\ExceptionHelper;
 use Rabbit\Data\Pipeline\AbstractPlugin;
 use Rabbit\Data\Pipeline\Message;
-use Rabbit\DB\Relication\Manager\File;
-use Rabbit\DB\Relication\Manager\IndexInterface;
+use Rabbit\DB\Relication\Manager\FilePos;
+use Rabbit\DB\Relication\Manager\PosManagerInterface;
 use RuntimeException;
 use Swoole\Coroutine\Socket;
 use Throwable;
@@ -42,7 +40,7 @@ class Mysql extends AbstractPlugin
     protected array $database = [];
     private string $posKey = 'binlog.pos';
 
-    public IndexInterface $index;
+    public PosManagerInterface $manager;
 
     public function init(): void
     {
@@ -55,7 +53,9 @@ class Mysql extends AbstractPlugin
             $this->slaveId,
             $this->heartBeat,
             $this->tables,
-            $this->posKey
+            $this->posKey,
+            $this->database,
+            $manager,
         ] = ArrayHelper::getValueByArray(
             $this->config,
             [
@@ -67,7 +67,8 @@ class Mysql extends AbstractPlugin
                 'heartBeat',
                 'tables',
                 'posKey',
-                'database'
+                'database',
+                'manager'
             ],
             [
                 $this->host,
@@ -78,15 +79,16 @@ class Mysql extends AbstractPlugin
                 $this->heartBeat,
                 $this->tables,
                 $this->posKey,
-                $this->database
+                $this->database,
+                null
             ]
         );
-        $this->index = new File();
+        $this->manager = $manager === null ? new FilePos() : getDI($manager);
     }
 
     public function save(string $value): void
     {
-        $this->index->saveIndex($this->posKey, $value);
+        $this->manager->savePos($this->posKey, $value);
     }
 
     public function run(Message $msg): void
@@ -144,7 +146,7 @@ class Mysql extends AbstractPlugin
                 ->withHeartbeatPeriod($this->heartBeat)
                 ->withDatabasesOnly($this->database)
                 ->withTablesOnly($this->tables);
-            $gtid = $this->index->getIndex($this->posKey);
+            $gtid = $this->manager->getPos($this->posKey);
             if ($gtid) {
                 $ids = [];
                 [$gtid, $index] = explode(':', trim($gtid));
