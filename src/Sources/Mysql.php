@@ -13,6 +13,7 @@ use MySQLReplication\Event\EventSubscribers;
 use MySQLReplication\MySQLReplicationFactory;
 use MySQLReplication\Socket\SocketInterface;
 use Rabbit\Base\App;
+use Rabbit\Base\Exception\InvalidArgumentException;
 use Rabbit\Base\Helper\ArrayHelper;
 use Rabbit\Base\Helper\ExceptionHelper;
 use Rabbit\Data\Pipeline\AbstractPlugin;
@@ -36,9 +37,10 @@ class Mysql extends AbstractPlugin
     protected string $user;
     protected string $pass;
     protected int $slaveId = 666;
-    protected float $heartBeat = 0.0;
+    protected float $heartBeat = 1.0;
     protected array $database = [];
     private string $posKey = 'binlog.pos';
+    protected ?string $prefix = null;
 
     public PosManagerInterface $manager;
 
@@ -56,6 +58,7 @@ class Mysql extends AbstractPlugin
             $this->posKey,
             $this->database,
             $manager,
+            $this->prefix,
         ] = ArrayHelper::getValueByArray(
             $this->config,
             [
@@ -68,7 +71,8 @@ class Mysql extends AbstractPlugin
                 'tables',
                 'posKey',
                 'database',
-                'manager'
+                'manager',
+                'prefix'
             ],
             [
                 $this->host,
@@ -80,9 +84,13 @@ class Mysql extends AbstractPlugin
                 $this->tables,
                 $this->posKey,
                 $this->database,
+                null,
                 null
             ]
         );
+        if ($this->prefix === null) {
+            throw new InvalidArgumentException("prefix is empty");
+        }
         $this->manager = $manager === null ? new FilePos() : getDI($manager);
     }
 
@@ -148,7 +156,7 @@ class Mysql extends AbstractPlugin
                 ->withTablesOnly($this->tables);
             $gtid = $this->manager->getPos($this->posKey, $this->database);
             if ($gtid) {
-                $builder->withGtid($gtid);
+                $builder->withGtid("{$this->prefix}:1-{$gtid}");
             }
             $this->binLogStream = new MySQLReplicationFactory(
                 $builder->build(),
