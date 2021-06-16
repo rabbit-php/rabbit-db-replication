@@ -146,14 +146,9 @@ class Mysql extends AbstractPlugin
                 ->withHeartbeatPeriod($this->heartBeat)
                 ->withDatabasesOnly($this->database)
                 ->withTablesOnly($this->tables);
-            $gtid = $this->manager->getPos($this->posKey);
+            $gtid = $this->manager->getPos($this->posKey, $this->database);
             if ($gtid) {
-                $ids = [];
-                [$gtid, $index] = explode(':', trim($gtid));
-                for ($i = 1; $i <= (int)$index; $i++) {
-                    $ids[] = "{$gtid}:{$i}";
-                }
-                $builder->withGtid(implode(',', $ids));
+                $builder->withGtid($gtid);
             }
             $this->binLogStream = new MySQLReplicationFactory(
                 $builder->build(),
@@ -190,10 +185,9 @@ class Mysql extends AbstractPlugin
 
                 public function rowDTO(RowsDTO $event): void
                 {
-                    $table = $event->getTableMap()->getTable();
                     $msg = clone $this->msg;
                     $msg->opt['gtid'] = $event->getEventInfo()->getBinLogCurrent()->getGtid();
-                    $msg->data = [$table, $event->getType(), $event->getValues(), $event->getEventInfo()->getDateTime()];
+                    $msg->data = [$event->getTableMap()->getDatabase(), $event->getTableMap()->getTable(), $event->getType(), $event->getValues(), $event->getEventInfo()->getDateTime()];
                     rgo(function () use ($msg) {
                         $this->plugin->sink($msg);
                         $this->plugin->save($msg->opt['gtid']);

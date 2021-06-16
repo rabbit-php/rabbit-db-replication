@@ -6,6 +6,6 @@ namespace Rabbit\DB\Relication\Manager;
 
 interface PosManagerInterface
 {
-    public function getPos(string $key): ?string;
+    public function getPos(string $key, array $dbNames = []): ?string;
     public function savePos(string $key, string $value): void;
 }
