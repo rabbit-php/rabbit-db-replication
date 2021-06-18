@@ -11,7 +11,6 @@ use MySQLReplication\Event\DTO\UpdateRowsDTO;
 use MySQLReplication\Event\DTO\WriteRowsDTO;
 use MySQLReplication\Event\EventSubscribers;
 use MySQLReplication\MySQLReplicationFactory;
-use MySQLReplication\Socket\SocketInterface;
 use Rabbit\Base\App;
 use Rabbit\Base\Exception\InvalidArgumentException;
 use Rabbit\Base\Helper\ArrayHelper;
@@ -20,8 +19,6 @@ use Rabbit\Data\Pipeline\AbstractPlugin;
 use Rabbit\Data\Pipeline\Message;
 use Rabbit\DB\Relication\Manager\FilePos;
 use Rabbit\DB\Relication\Manager\PosManagerInterface;
-use RuntimeException;
-use Swoole\Coroutine\Socket;
 use Throwable;
 
 /**
@@ -37,7 +34,7 @@ class Mysql extends AbstractPlugin
     protected string $user;
     protected string $pass;
     protected int $slaveId = 666;
-    protected float $heartBeat = 1.0;
+    protected float $heartBeat = 0.5;
     protected array $database = [];
     private string $posKey = 'binlog.pos';
     protected ?string $prefix = null;
@@ -102,49 +99,6 @@ class Mysql extends AbstractPlugin
     public function run(Message $msg): void
     {
         try {
-            $socket = new class implements SocketInterface
-            {
-                protected Socket $conn;
-
-                public function isConnected(): bool
-                {
-                    return $this->conn->errCode === 0;
-                }
-
-                public function connectToStream(string $host, int $port): void
-                {
-                    $client = new Socket(AF_INET, SOCK_STREAM);
-                    $reconnectCount = 0;
-                    while (true) {
-                        if (!$client->connect($host, $port, 3)) {
-                            $reconnectCount++;
-                            if ($reconnectCount >= 3) {
-                                $error = sprintf(
-                                    'Service connect fail error=%s host=%s port=%s',
-                                    socket_strerror($client->errCode),
-                                    $host,
-                                    $port
-                                );
-                                throw new RuntimeException($error);
-                            }
-                            sleep(1);
-                        } else {
-                            break;
-                        }
-                    }
-                    $this->conn = $client;
-                }
-
-                public function readFromSocket(int $length): string
-                {
-                    return $this->conn->recvAll($length, -1);
-                }
-
-                public function writeToSocket(string $data): void
-                {
-                    $this->conn->sendAll($data);
-                }
-            };
             $builder = (new ConfigBuilder())
                 ->withUser($this->user)
                 ->withHost($this->host)
@@ -159,11 +113,7 @@ class Mysql extends AbstractPlugin
                 $builder->withGtid("{$this->prefix}:1-{$gtid}");
             }
             $this->binLogStream = new MySQLReplicationFactory(
-                $builder->build(),
-                null,
-                null,
-                null,
-                $socket
+                $builder->build()
             );
             $event = new class($this, $msg) extends EventSubscribers
             {
