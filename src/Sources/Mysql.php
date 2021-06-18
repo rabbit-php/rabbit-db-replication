@@ -28,7 +28,8 @@ use Throwable;
 class Mysql extends AbstractPlugin
 {
     protected MySQLReplicationFactory $binLogStream;
-    public array $tables = [];
+    protected array $tables = [];
+    public array $noTables = [];
     protected string $host = '127.0.0.1';
     protected int $port = 3306;
     protected string $user;
@@ -38,6 +39,8 @@ class Mysql extends AbstractPlugin
     protected array $database = [];
     private string $posKey = 'binlog.pos';
     protected ?string $prefix = null;
+    protected bool $refresh = false;
+
 
     public PosManagerInterface $manager;
 
@@ -52,10 +55,12 @@ class Mysql extends AbstractPlugin
             $this->slaveId,
             $this->heartBeat,
             $this->tables,
+            $this->noTables,
             $this->posKey,
             $this->database,
             $manager,
             $this->prefix,
+            $this->refresh
         ] = ArrayHelper::getValueByArray(
             $this->config,
             [
@@ -66,10 +71,12 @@ class Mysql extends AbstractPlugin
                 'slaveId',
                 'heartBeat',
                 'tables',
+                'noTables',
                 'posKey',
                 'database',
                 'manager',
-                'prefix'
+                'prefix',
+                'refresh'
             ],
             [
                 $this->host,
@@ -79,10 +86,12 @@ class Mysql extends AbstractPlugin
                 $this->slaveId,
                 $this->heartBeat,
                 $this->tables,
+                $this->noTables,
                 $this->posKey,
                 $this->database,
                 null,
-                null
+                null,
+                $this->refresh
             ]
         );
         if ($this->prefix === null) {
@@ -111,6 +120,8 @@ class Mysql extends AbstractPlugin
             $gtid = $this->manager->getPos($this->posKey, $this->database);
             if ($gtid) {
                 $builder->withGtid("{$this->prefix}:1-{$gtid}");
+            } elseif ($this->refresh) {
+                $builder->withGtid("{$this->prefix}:1");
             }
             $this->binLogStream = new MySQLReplicationFactory(
                 $builder->build()
@@ -143,13 +154,17 @@ class Mysql extends AbstractPlugin
 
                 public function rowDTO(RowsDTO $event): void
                 {
-                    $msg = clone $this->msg;
-                    $msg->opt['gtid'] = $event->getEventInfo()->getBinLogCurrent()->getGtid();
-                    $msg->data = [$event->getTableMap()->getDatabase(), $event->getTableMap()->getTable(), $event->getType(), $event->getValues(), $event->getEventInfo()->getDateTime()];
-                    rgo(function () use ($msg) {
-                        $this->plugin->sink($msg);
-                        $this->plugin->save($msg->opt['gtid']);
-                    });
+                    $table = $event->getTableMap()->getTable();
+                    $database = $event->getTableMap()->getDatabase();
+                    if (!in_array($table, $this->plugin->noTables)) {
+                        $msg = clone $this->msg;
+                        $msg->opt['gtid'] = $event->getEventInfo()->getBinLogCurrent()->getGtid();
+                        $msg->data = [$database, $table, $event->getType(), $event->getValues(), $event->getEventInfo()->getDateTime()];
+                        rgo(function () use ($msg) {
+                            $this->plugin->sink($msg);
+                            $this->plugin->save($msg->opt['gtid']);
+                        });
+                    }
                 }
             };
             $this->binLogStream->registerSubscriber($event);
