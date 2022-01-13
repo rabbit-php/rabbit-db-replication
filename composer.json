@@ -10,6 +10,7 @@
     }
   ],
   "require": {
+    "php": ">=8.1.0",
     "rabbit/base": "dev-master",
     "rabbit/data-pipeline": "dev-master",
     "krowinski/php-mysql-replication": "^7.0"
