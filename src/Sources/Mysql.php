@@ -128,13 +128,8 @@ class Mysql extends AbstractPlugin
             );
             $event = new class($this, $msg) extends EventSubscribers
             {
-                protected Mysql $plugin;
-                protected Message $msg;
-
-                public function __construct(Mysql $plugin, Message $msg)
+                public function __construct(protected Mysql $plugin, protected Message $msg)
                 {
-                    $this->plugin = $plugin;
-                    $this->msg = $msg;
                 }
 
                 public function onUpdate(UpdateRowsDTO $event): void

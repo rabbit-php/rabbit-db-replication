@@ -19,7 +19,7 @@ class FilePos implements PosManagerInterface
         FileHelper::createDirectory($this->path);
     }
 
-    public function getPos(string $key): ?string
+    public function getPos(string $key, array $dbNames = []): ?string
     {
         $fileName = $this->path . "/$key";
         if (false === $index = @file_get_contents($fileName)) {
