@@ -118,7 +118,7 @@ class Mysql extends AbstractPlugin
                 ->withDatabasesOnly($this->database)
                 ->withTablesOnly($this->tables);
             $gtid = $this->manager->getPos($this->posKey, $this->database);
-            if ($gtid) {
+            if ((int)$gtid > 1) {
                 $builder->withGtid("{$this->prefix}:1-{$gtid}");
             } elseif ($this->refresh) {
                 $builder->withGtid("{$this->prefix}:1");

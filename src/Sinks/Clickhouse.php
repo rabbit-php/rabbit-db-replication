@@ -15,7 +15,6 @@ class Clickhouse extends AbstractPlugin
     protected StreamWrite $db;
     protected string $key;
     protected int $bufferSize = 1000;
-    protected int $current = 0;
 
     /**
      * @return mixed|void
@@ -34,12 +33,13 @@ class Clickhouse extends AbstractPlugin
         ] = ArrayHelper::getValueByArray(
             $this->config,
             ['key', 'bufferSize', 'table'],
-            ['click', 1000]
+            ['click', $this->bufferSize]
         );
         if ($table === null) {
             throw new InvalidArgumentException("table is empty");
         }
-        $this->db = new StreamWrite($table, ['gtid', 'table', 'type', 'value'], $this->key);
+        $this->db = new StreamWrite($table, ['gtid', 'table', 'type', 'value'], db: $this->key);
+        $this->db->send();
     }
 
     public function run(Message $msg): void
@@ -48,12 +48,11 @@ class Clickhouse extends AbstractPlugin
         if (!ArrayHelper::isIndexed($items)) {
             $items = [$items];
         }
+
+        $data = [];
         foreach ($items as $item) {
-            $this->db->write(['gtid' => $msg->opt['gtid'], 'table' => $table, 'type' => $type, 'value' => $item]);
-            $this->current++;
+            $data[] = ['gtid' => $msg->opt['gtid'], 'table' => $table, 'type' => $type, 'value' => $item];
         }
-        if ($this->current >= $this->bufferSize) {
-            $this->db->flush();
-        }
+        $this->db->write($data);
     }
 }
