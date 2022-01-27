@@ -31,7 +31,7 @@ class FilePos implements PosManagerInterface
     public function savePos(string $key, string $value): void
     {
         $this->openFile($key);
-        nlock(function () use ($value) {
+        nlock(function () use ($value): void {
             flock($this->fp, LOCK_EX);
             fwrite($this->fp, $value);
             flock($this->fp, LOCK_UN);

@@ -155,7 +155,7 @@ class Mysql extends AbstractPlugin
                         $msg = clone $this->msg;
                         $msg->opt['gtid'] = $event->getEventInfo()->getBinLogCurrent()->getGtid();
                         $msg->data = [$database, $table, $event->getType(), $event->getValues(), $event->getEventInfo()->getDateTime()];
-                        rgo(function () use ($msg) {
+                        rgo(function () use ($msg): void {
                             $this->plugin->sink($msg);
                             $this->plugin->save($msg->opt['gtid']);
                         });
